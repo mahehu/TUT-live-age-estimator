@@ -18,7 +18,8 @@ Python implementation of a live deep learning based age/gender/expression recogn
 Requires a webcam.<br>
 Pip-package "opencv-python" includes GTK support, which is required.<br>
 Keras 2.2.2. Earlier versions have a slightly different way of loading the models.<br>
-Download the required deep learning models from <a href="https://tutfi-my.sharepoint.com/:u:/g/personal/janne_tommola_tut_fi/EcrQbRgnsydApRFsmsUbPfABcEK0arXtCe796Bt1x7_U7g?e=fQJN7Z">here</a>.
+Download the required deep learning models from <a href="https://tutfi-my.sharepoint.com/:u:/g/personal/janne_tommola_tut_fi/EcrQbRgnsydApRFsmsUbPfABcEK0arXtCe796Bt1x7_U7g?e=fQJN7Z">here</a>. Extract directly to the main folder so that 2 new folders are created there.<br>
+Run with "python EstimateAge.py"
 
 Example video of <b>old version</b> <a href="https://youtu.be/Kfe5hKNwrCU">here</a>.
 
