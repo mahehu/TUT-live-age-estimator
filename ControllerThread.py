@@ -12,9 +12,12 @@ from RecognitionThread import RecognitionThread
 
 import threading
 import time
+import datetime
 import cv2
 import copy
+import os
 import numpy as np
+import subprocess
 
 class ControllerThread(threading.Thread):
     """ Responsible for starting and shutting down all threads and
@@ -24,6 +27,9 @@ class ControllerThread(threading.Thread):
         
         threading.Thread.__init__(self)
 
+        self.imageSaveTime = time.time()
+        os.makedirs('saves', exist_ok=True)
+
         self.terminated = False
         self.caption = params.get("window", "caption")        
 
@@ -32,9 +38,16 @@ class ControllerThread(threading.Thread):
         self.displaysize = params.get("window", "displaysize")
         self.displaysize = self.displaysize.upper().split("X")
         self.displaysize = tuple([int(s) for s in self.displaysize])
-                
+
+        # Get current resolution
+        self.resolution = subprocess.Popen('xrandr | grep "\*" | cut -d" " -f4',
+                                           shell=True, stdout=subprocess.PIPE).communicate()[0].decode("utf-8").rstrip().split('x')
+        self.resolution = [int(s) for s in self.resolution]
+        print(self.resolution)
+
         # Start frame storage
-        queueLength = params.getint("server", "num_frames")
+        # queueLength = params.getint("server", "num_frames")
+        queueLength = 8
         self.unitServer = UnitServer(queueLength)
 
         # Start Grabber thread
@@ -42,14 +55,17 @@ class ControllerThread(threading.Thread):
         self.grabberThread.start()
         
         # Start Detection thread
+        self.faces = []
         self.detectionThread = DetectionThread(self, params)
         self.detectionThread.start()
-        self.faces = []
-        
+
         # Start Recognition Thread
         self.recognitionThread = RecognitionThread(self, params)
         self.recognitionThread.start()
-        
+
+        unused_width = self.resolution[0] - self.displaysize[0]
+        cv2.moveWindow(self.caption, unused_width//2, 0)  # Will move window when everything is running. Better way TODO
+
     def run(self):
 
         while not self.terminated:
@@ -124,7 +140,7 @@ class ControllerThread(threading.Thread):
 
         # 1. AGE
 
-        if "age" in face.keys():
+        if "age" in list(face.keys()):
 
             age = face['age']
             annotation = "Age: %.0f" % (age)
@@ -140,9 +156,9 @@ class ControllerThread(threading.Thread):
 
         # 2. GENDER
 
-        if "gender" in face.keys(): 
+        if "gender" in list(face.keys()):
             
-            gender = "MALE" if face['gender'] > 0.5 else "FEMALE"            
+            gender = "MALE" if face['gender'] > 0.5 else "FEMALE"
             genderProb = max(face["gender"], 1-face["gender"])
             annotation = "%s %.0f %%" % (gender, 100.0 * genderProb)
             txtLoc = (x, y + h + 60)
@@ -157,7 +173,7 @@ class ControllerThread(threading.Thread):
 
         # 3. EXPRESSION
 
-        if "expression" in face.keys():
+        if "expression" in list(face.keys()):
 
             expression = face["expression"]
             annotation = "%s" % (expression)
@@ -181,6 +197,19 @@ class ControllerThread(threading.Thread):
 
         validFaces = [f for f in self.faces if len(f['bboxes']) > self.minDetections]
 
+        # save image
+        #if validFaces and 'expression' in validFaces[-1] and time.time() - self.imageSaveTime > 5:
+        #    self.imageSaveTime = time.time()
+
+        #    filename = datetime.datetime.now().strftime('%Y-%m-%d-%H-%m-%S')
+
+        #    try:
+        #        for face in validFaces:
+        #            filename += "-age{:.0f}_{:.2f}_{}".format(face['age'], face['gender'][0], face['expression'])
+        #        cv2.imwrite(os.path.join('saves', filename + ".jpg"), frame)
+        #    except:
+        #        pass
+            
         for face in validFaces:
             self.drawFace(face, frame)
         
