@@ -5,7 +5,7 @@ Python implementation of a live deep learning based age/gender/expression recogn
 
 <p align="center">
   The system in a test environment<br>
-  <img src="doc/demo.png" width=544 height=306>
+  <img src="doc/demo.jpg" width=544 height=306>
 </p>
 <br><br>
 <p align="center">
