@@ -16,7 +16,7 @@ If you use our work for research purposes, consider citing the above work.
 Dependencies: [OpenCV 3.4.1+](http://www.opencv.org/), [Keras 2.2.2+](http://keras.io/) and [dlib 19.4+](http://dlib.net/).
 
   * Requires a webcam.
-  * Tested with Ubuntu Linux 16.04 and 18.04 with and without a GPU.
+  * Tested on Ubuntu Linux 16.04 and 18.04 with and without a GPU.
   * Install opencv 3.4.1 or newer. Recommended to install with `pip3 install opencv-python` (includes GTK support, which is required).
   * Install Keras 2.2.2 (or newer). Earlier versions have a slightly different way of loading the models. For example: `pip3 install keras tensorflow` (note: `tensorflow-gpu` is OK as well, but may be slower).
   * Install dlib (version 19.4 or newer) with python 3 dependencies; _e.g.,_ `pip3 install dlib`.
