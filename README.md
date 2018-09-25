@@ -1,8 +1,8 @@
 # TUT-live-age-estimator
 
-* Python implementation of a live deep learning based age/gender/expression recognizer. *
+**Python implementation of a live deep learning based age/gender/expression recognizer.**
 
-*2018-09-18*: Updated detection and recognition to use modern Mobilenets through OpenCV and Keras, removed Caffe dependencies. Aligner updated. Other minor changes.
+Dependencies: [OpenCV 3.4.1+](http://www.opencv.org/), [Keras 2.2.2+](http://keras.io/) and [dlib](http://dlib.net/).
 
 ![Image](doc/demo.jpg "demo")
 
@@ -16,7 +16,8 @@ If you use our work for research purposes, consider citing the above work.
 
   * Requires a webcam.
   * Install opencv 3.4.1 or newer. Recommended to install with `pip install opencv-python` (includes GTK support, which is required).
-  * Keras 2.2.2 (or newer). Earlier versions have a slightly different way of loading the models.
+  * Install Keras 2.2.2 (or newer). Earlier versions have a slightly different way of loading the models.
+  * Install a recent dlib with python 3 dependencies; _e.g.,_ `pip install dlib`.
   * Download the required deep learning models from [here](http://www.cs.tut.fi/~hehu/models.zip) or [here](https://tutfi-my.sharepoint.com/:u:/g/personal/janne_tommola_tut_fi/EcrQbRgnsydApRFsmsUbPfABcEK0arXtCe796Bt1x7_U7g?e=fQJN7Z). Extract directly to the main folder so that 2 new folders are created there.
   * Run with `python EstimateAge.py`.
 
