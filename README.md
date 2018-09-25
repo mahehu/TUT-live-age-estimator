@@ -1,6 +1,6 @@
 # TUT-live-age-estimator
 
-## Python implementation of a live deep learning based age/gender/expression recognizer.
+* Python implementation of a live deep learning based age/gender/expression recognizer. *
 
 *2018-09-18*: Updated detection and recognition to use modern Mobilenets through OpenCV and Keras, removed Caffe dependencies. Aligner updated. Other minor changes.
 
@@ -8,7 +8,7 @@
 
 The functionality of the system is described in our paper:
 
-Janne Tommola, Pedram Ghazi, Bishwo Adhikari, Heikki Huttunen, "Real Time System for Facial Analysis," Submitted to EUVIP2018. [ [arXiv link](https://arxiv.org/abs/1809.05474]) ]
+Janne Tommola, Pedram Ghazi, Bishwo Adhikari, Heikki Huttunen, "[Real Time System for Facial Analysis](https://arxiv.org/abs/1809.05474)," Submitted to EUVIP2018.
 
 If you use our work for research purposes, consider citing the above work.
 
@@ -21,6 +21,4 @@ If you use our work for research purposes, consider citing the above work.
   * Run with `python EstimateAge.py`.
 
 
-Example video of <b>old version</b> <a href="https://youtu.be/Kfe5hKNwrCU">here</a>.
-
-
+Example video [here](https://youtu.be/Kfe5hKNwrCU).
