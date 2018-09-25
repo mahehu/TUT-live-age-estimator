@@ -11,7 +11,9 @@ All components use convolutional networks:
  
 The detailed functionality of the system is described in our paper:
 
-> Janne Tommola, Pedram Ghazi, Bishwo Adhikari, Heikki Huttunen, "[Real Time System for Facial Analysis](https://arxiv.org/abs/1809.05474)," Submitted to EUVIP2018.
+```
+Janne Tommola, Pedram Ghazi, Bishwo Adhikari, Heikki Huttunen, "[Real Time System for Facial Analysis](https://arxiv.org/abs/1809.05474)," Submitted to EUVIP2018.
+```
 
 If you use our work for research purposes, consider citing the above work.
 
