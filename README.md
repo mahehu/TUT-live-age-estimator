@@ -1,4 +1,4 @@
-# TUT-live-age-estimator
+# TUT live age estimator
 
 **Python implementation of a live deep learning based age/gender/expression recognizer.**
 
@@ -25,3 +25,5 @@ Dependencies: [OpenCV 3.4.1+](http://www.opencv.org/), [Keras 2.2.2+](http://ker
 
 
 Example video [here](https://youtu.be/Kfe5hKNwrCU).
+
+Contributors: [Heikki Huttunen](http://www.cs.tut.fi/~hehu/), Janne Tommola
