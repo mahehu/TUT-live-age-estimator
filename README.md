@@ -4,7 +4,12 @@
 
 ![Image](doc/demo.jpg "demo")
 
-The functionality of the system is described in our paper:
+All components use convolutional networks:
+
+ * Detection uses an SSD model trained on Tensorflow object detection API, but running on OpenCV.
+ * Age, gender and facial expression use a mobilenet trained and running on keras.
+ 
+The detailed functionality of the system is described in our paper:
 
 Janne Tommola, Pedram Ghazi, Bishwo Adhikari, Heikki Huttunen, "[Real Time System for Facial Analysis](https://arxiv.org/abs/1809.05474)," Submitted to EUVIP2018.
 
