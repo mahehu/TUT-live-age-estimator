@@ -3,6 +3,8 @@ Python implementation of a live deep learning based age/gender/expression recogn
 
 <b>2018-09-18</b>: Updated detection and recognition to use modern Mobilenets through OpenCV and Keras, removed Caffe dependencies. Aligner updated. Other minor changes.
 
+![Image](doc/demo.jpg "demo")
+
 <p align="center">
   <img src="doc/demo.jpg" width=544 height=306>
   <br>
