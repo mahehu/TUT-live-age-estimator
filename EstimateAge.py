@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import ControllerThread
-import ConfigParser
+import configparser
 import sys
 
 if __name__ == '__main__':
@@ -15,9 +15,9 @@ if __name__ == '__main__':
     else:
         paramFile = "config.ini"
 
-    params = ConfigParser.ConfigParser()
+    params = configparser.ConfigParser()
     params.read(paramFile)
-    
+
     # Initialize controller thread
 
     controllerThread = ControllerThread.ControllerThread(params)
