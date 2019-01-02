@@ -23,12 +23,6 @@ class RecognitionThread(threading.Thread):
         threading.Thread.__init__(self)
         self.parent = parent
 
-        ##### Initialize aligners for face alignment.
-        aligner_path = params.get("recognition", "aligner")
-        aligner_targets_path = params.get("recognition", "aligner_targets")
-        self.aligner = dlib.shape_predictor(aligner_path)
-        self.aligner_targets = np.loadtxt(aligner_targets_path)
-
         ##### Initialize networks for Age, Gender and Expression
         ##### 1. AGE
         print("Initializing age network...")
@@ -205,10 +199,10 @@ class RecognitionThread(threading.Thread):
 
                     # 1. DETECT LANDMARKS
                     dlib_box = dlib.rectangle(left=x, top=y, right=x + w, bottom=y + h)
-                    dlib_img = img[..., ::-1].astype(np.uint8)
+                    dlib_img = img[..., ::-1].astype(np.uint8) # BGR to RGB
 
                     crop = self.crop_face(dlib_img, dlib_box)
-                    crop = cv2.resize(crop, (224, 224))
+                    crop = cv2.resize(crop[..., ::-1], (224, 224)) # RGB to BGR
 
 
                     siamese_target_size = self.siameseNet.input_shape[1:3]
