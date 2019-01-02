@@ -92,38 +92,6 @@ class RecognitionThread(threading.Thread):
         self.celeb_index = faiss.IndexFlatL2(celeb_features.shape[1])
         self.celeb_index.add(celeb_features)
 
-    def estimateRigidTransform(self, landmarks, aligner_targets):
-        # H = np.vstack([src[:, 0], src[:, 1], np.ones_like(src[:, 0])]).T
-        # M = np.linalg.lstsq(H, dst)[0].T
-
-        first_idx = 27
-        B = aligner_targets[first_idx:, :]
-        landmarks = landmarks[first_idx:]
-        A = np.hstack((np.array(landmarks), np.ones((len(landmarks), 1))))
-
-        a = np.row_stack((np.array([-A[0][1], -A[0][0], 0, -1]), np.array([
-            A[0][0], -A[0][1], 1, 0])))
-        b = np.row_stack((-B[0][1], B[0][0]))
-
-        for j in range(A.shape[0] - 1):
-            j += 1
-            a = np.row_stack((a, np.array([-A[j][1], -A[j][0], 0, -1])))
-            a = np.row_stack((a, np.array([A[j][0], -A[j][1], 1, 0])))
-            b = np.row_stack((b, np.array([[-B[j][1]], [B[j][0]]])))
-        X, res, rank, s = np.linalg.lstsq(a, b, rcond=-1)
-        cos = (X[0][0]).real.astype(np.float32)
-        sin = (X[1][0]).real.astype(np.float32)
-        t_x = (X[2][0]).real.astype(np.float32)
-        t_y = (X[3][0]).real.astype(np.float32)
-        # scale = np.sqrt(np.square(cos) + np.square(sin))
-
-        H = np.array([[cos, -sin, t_x], [sin, cos, t_y]])
-
-        s = np.linalg.eigvals(H[:, :-1])
-        R = s.max() / s.min()
-
-        return H, R
-
     def crop_face(self, img, rect, margin=0.2):
         x1 = rect.left()
         x2 = rect.right()
@@ -132,6 +100,19 @@ class RecognitionThread(threading.Thread):
         # size of face
         w = x2 - x1 + 1
         h = y2 - y1 + 1
+
+        # Extend the area into square shape:
+        if w > h:
+            center = int(0.5 * (y1 + y2))
+            h = w
+            y1 = center - int(h / 2)
+            y2 = y1 + h
+        elif h > w:
+            center = int(0.5 * (x1 + x2))
+            w = h
+            x1 = center - int(w / 2)
+            x2 = x1 + w
+
         # add margin
         full_crop_x1 = x1 - int(w * margin)
         full_crop_y1 = y1 - int(h * margin)
@@ -225,19 +206,9 @@ class RecognitionThread(threading.Thread):
                     # 1. DETECT LANDMARKS
                     dlib_box = dlib.rectangle(left=x, top=y, right=x + w, bottom=y + h)
                     dlib_img = img[..., ::-1].astype(np.uint8)
-                    s = self.aligner(dlib_img, dlib_box)
-                    landmarks = [[s.part(k).x, s.part(k).y] for k in range(s.num_parts)]
 
-                    # 2. ALIGN
-                    landmarks = np.array(landmarks)
-                    M,R = self.estimateRigidTransform(landmarks, self.aligner_targets)
-
-                    if R < 1.5:
-                        crop = cv2.warpAffine(img, M, (224, 224), borderMode=2)
-                    else:
-                        # Seems to distort too much, probably error in landmarks, then let's just crop.
-                        crop = self.crop_face(dlib_img, dlib_box)
-                        crop = cv2.resize(crop, (224, 224))
+                    crop = self.crop_face(dlib_img, dlib_box)
+                    crop = cv2.resize(crop, (224, 224))
 
 
                     siamese_target_size = self.siameseNet.input_shape[1:3]
