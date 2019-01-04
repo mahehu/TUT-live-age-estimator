@@ -144,7 +144,7 @@ class ControllerThread(threading.Thread):
         pt1 = (x + w, y + h)
         pt2 = (int(x + w - m * w), y + h)
         cv2.line(img, pt1, pt2, color = [255,255,0], thickness = 2)
-        
+
     def drawFace(self, face, img):
         
         bbox = np.mean(face['bboxes'], axis = 0)
@@ -163,51 +163,27 @@ class ControllerThread(threading.Thread):
         # 1. AGE
 
         if "age" in face.keys():
-
             age = face['age']
-            age_annotation = "Age: %.0f" % age
+            annotation = "Age: %.0f" % age
             txtLoc = (x, y + h + 30)
-
-            cv2.putText(img,
-                        text = age_annotation,
-                        org = txtLoc,
-                        fontFace = cv2.FONT_HERSHEY_SIMPLEX,
-                        fontScale = font_scale,
-                        color = [255,255,0],
-                        thickness = 2)
+            putText(img, annotation, txtLoc, font_scale)
 
         # 2. GENDER
 
         if "gender" in face.keys():
-            
             gender = "MALE" if face['gender'] > 0.5 else "FEMALE"
             genderProb = max(face["gender"], 1-face["gender"])
             annotation = "%s %.0f %%" % (gender, 100.0 * genderProb)
             txtLoc = (x, y + h + 60)
-    
-            cv2.putText(img,
-                        text = annotation,
-                        org = txtLoc,
-                        fontFace = cv2.FONT_HERSHEY_SIMPLEX,
-                        fontScale = font_scale,
-                        color = [255,255,0],
-                        thickness = 2)
+            putText(img, annotation, txtLoc, font_scale)
 
         # 3. EXPRESSION
 
         if "expression" in face.keys():
-
             expression = face["expression"]
             annotation = "%s" % (expression)
             txtLoc = (x, y + h + 90)
-    
-            cv2.putText(img,
-                        text = annotation,
-                        org = txtLoc,
-                        fontFace = cv2.FONT_HERSHEY_SIMPLEX,
-                        fontScale = font_scale,
-                        color = [255,255,0],
-                        thickness = 2)
+            putText(img, annotation, txtLoc, font_scale)
 
         # 4. CELEBRITY TWIN
 
@@ -253,36 +229,15 @@ class ControllerThread(threading.Thread):
             
                 annotation = "CELEBRITY"
                 txtLoc = (x+w, y + h + 30)
-                
-                cv2.putText(img,
-                            text = annotation,
-                            org = txtLoc,
-                            fontFace = cv2.FONT_HERSHEY_SIMPLEX,
-                            fontScale = font_scale,
-                            color = [255,255,0],
-                            thickness = 2)
+                putText(img, annotation, txtLoc, font_scale)
             
                 annotation = "TWIN" # (%.0f %%)" % (100*np.exp(-face["celeb_distance"]))
                 txtLoc = (x+w, y + h + 60)
-                
-                cv2.putText(img,
-                            text = annotation,
-                            org = txtLoc,
-                            fontFace = cv2.FONT_HERSHEY_SIMPLEX,
-                            fontScale = font_scale,
-                            color = [255,255,0],
-                            thickness = 2)
-                
+                putText(img, annotation, txtLoc, font_scale)
+
                 annotation = identity.replace('ä', 'a').replace('ö', 'o').replace('å', 'o')
                 txtLoc = (x+w, y + h + 90)
-                
-                cv2.putText(img,
-                            text = annotation,
-                            org = txtLoc,
-                            fontFace = cv2.FONT_HERSHEY_SIMPLEX,
-                            fontScale = font_scale,
-                            color = [255,255,0],
-                            thickness = 2)
+                putText(img, annotation, txtLoc, font_scale)
 
         if __debug__:
             try:
@@ -388,3 +343,7 @@ class ControllerThread(threading.Thread):
         
         return self.terminated
         
+
+def putText(img, text, location, scale):
+    cv2.putText(img, text=text, org=location, fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                fontScale=scale, color=[255, 255, 0], thickness=2)

@@ -48,7 +48,7 @@ class RecognitionThread(threading.Thread):
         self.expressionNet._make_predict_function()
         
         ##### Read class names
-        self.expressions = ['Neutral', 'Happy', 'Sad', 'Surprise', 'Fear', 'Disgust', 'Anger']
+        self.expressions = {int(key): val for key, val in params['expressions'].items()}  # convert string key to int
         self.minDetections = int(params.get("recognition", "mindetections"))
 
         ##### 4. CELEBRITY
@@ -195,9 +195,6 @@ class RecognitionThread(threading.Thread):
                     mean_box = np.mean(face['bboxes'], axis=0)
                     x, y, w, h = [int(c) for c in mean_box]
 
-                    # Align the face to match the targets
-
-                    # 1. DETECT LANDMARKS
                     dlib_box = dlib.rectangle(left=x, top=y, right=x + w, bottom=y + h)
                     dlib_img = img[..., ::-1].astype(np.uint8) # BGR to RGB
 
