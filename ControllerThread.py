@@ -18,16 +18,13 @@ import copy
 import os
 import numpy as np
 import subprocess
-
+from PIL import Image, ImageFont, ImageDraw
 class ControllerThread(threading.Thread):
     """ Responsible for starting and shutting down all threads and
         services. """
         
     def __init__(self, params):
         threading.Thread.__init__(self)
-
-        self.imageSaveTime = time.time()
-        os.makedirs('saves', exist_ok=True)
 
         self.terminated = False
         self.caption = params.get("window", "caption")        
@@ -145,6 +142,43 @@ class ControllerThread(threading.Thread):
         pt2 = (int(x + w - m * w), y + h)
         cv2.line(img, pt1, pt2, color = [255,255,0], thickness = 2)
 
+    def AddCeleb(self, face, img, x, y, w, h):
+
+        celebs = face["celebs"]
+        indexes = celebs["indexes"]
+        most_common = max(set(indexes), key=indexes.count)
+
+        filename = celebs[most_common].filename
+        distance = celebs[most_common].distance
+        identity = filename.split(os.sep)[-2]
+
+        celeb_img = cv2.imread(filename)
+        aspect_ratio = celeb_img.shape[1] / celeb_img.shape[0]
+        new_h = h
+        new_w = int(aspect_ratio * h)
+        try:
+            celeb_img = cv2.resize(celeb_img, (new_w, new_h))
+        except AssertionError:  # new_w or new_h is 0 ie bounding box size is 0
+            return None
+
+        # Cut out pixels overflowing image on the right
+        x_end = x + w + new_w
+        if x_end > img.shape[1]:
+            remove_pixels = x_end - img.shape[1]
+            celeb_img = celeb_img[:, :-remove_pixels, :]
+            new_w -= remove_pixels
+
+        # Cut out pixels overflowing image on the bottom
+        y_end = y + new_h
+        if y_end > img.shape[0]:
+            remove_pixels = y_end - img.shape[0]
+            celeb_img = celeb_img[:-remove_pixels, ...]
+            new_h -= remove_pixels
+
+        if celeb_img.size:
+            img[y: y + new_h, x + w: x + w + new_w, :] = celeb_img
+            return identity
+
     def drawFace(self, face, img):
         
         bbox = np.mean(face['bboxes'], axis = 0)
@@ -152,13 +186,32 @@ class ControllerThread(threading.Thread):
         self.drawBoundingBox(img, bbox)
         x, y, w, h = [int(c) for c in bbox]
 
-        font_scale = 0.6
+        # 1. CELEBRITY TWIN
+
+        celeb_identity = None
+
+        # Clamp bounding box top to image
+        y = 0 if y < 0 else y
+
+        if "celebs" in face.keys():
+            celeb_identity = self.AddCeleb(face, img, x, y, w, h)
+
+        font_scale = 30
+        font = ImageFont.truetype("Verdana.ttf", font_scale)
 
         # Check if text can overlap the celeb texts (goes past the bounding box), if so decrease size
         test_text = "FEMALE 100%"  # Probably longest text possible
-        text_length = cv2.getTextSize(test_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 2)[0][0]
+        text_length = font.getsize(test_text)[0]
         if text_length > w:
             font_scale *= w/text_length
+            font_scale = int(font_scale)
+
+        font = ImageFont.truetype("Verdana.ttf", font_scale)
+
+        PIL_img = Image.fromarray(img[..., ::-1])
+        draw = ImageDraw.Draw(PIL_img)
+
+
 
         # 1. AGE
 
@@ -166,7 +219,7 @@ class ControllerThread(threading.Thread):
             age = face['age']
             annotation = "Age: %.0f" % age
             txtLoc = (x, y + h + 30)
-            putText(img, annotation, txtLoc, font_scale)
+            draw.text(txtLoc, annotation, fill='Cyan', font=font)
 
         # 2. GENDER
 
@@ -175,7 +228,7 @@ class ControllerThread(threading.Thread):
             genderProb = max(face["gender"], 1-face["gender"])
             annotation = "%s %.0f %%" % (gender, 100.0 * genderProb)
             txtLoc = (x, y + h + 60)
-            putText(img, annotation, txtLoc, font_scale)
+            draw.text(txtLoc, annotation, fill='Cyan', font=font)
 
         # 3. EXPRESSION
 
@@ -183,74 +236,30 @@ class ControllerThread(threading.Thread):
             expression = face["expression"]
             annotation = "%s" % (expression)
             txtLoc = (x, y + h + 90)
-            putText(img, annotation, txtLoc, font_scale)
+            draw.text(txtLoc, annotation, fill='Cyan', font=font)
 
-        # 4. CELEBRITY TWIN
 
-        # Clamp bounding box top to image
-        y = 0 if y < 0 else y
+        if celeb_identity:
+            annotation = "CELEBRITY"
+            txtLoc = (x + w, y + h + 30)
+            draw.text(txtLoc, annotation, fill='Cyan', font=font)
 
-        if "celebs" in face.keys():
+            annotation = "TWIN"  # (%.0f %%)" % (100*np.exp(-face["celeb_distance"]))
+            txtLoc = (x + w, y + h + 60)
+            draw.text(txtLoc, annotation, fill='Cyan', font=font)
 
-            celebs = face["celebs"]
-            indexes = celebs["indexes"]
-            most_common = max(set(indexes), key=indexes.count)
+            annotation = celeb_identity#.replace('ä', 'a').replace('ö', 'o').replace('å', 'o')
+            txtLoc = (x + w, y + h + 90)
+            draw.text(txtLoc, annotation, fill='Cyan', font=font)
 
-            filename = celebs[most_common].filename
-            distance = celebs[most_common].distance
-            identity = filename.split(os.sep)[-2]
+        img = np.asarray(PIL_img)[..., ::-1].copy()
 
-            celeb_img = cv2.imread(filename)
-            aspect_ratio = celeb_img.shape[1] / celeb_img.shape[0]
-            new_h = h
-            new_w = int(aspect_ratio * h)
-            try:
-                celeb_img = cv2.resize(celeb_img, (new_w, new_h))
-            except AssertionError:  # new_w or new_h is 0 ie bounding box size is 0
-                return  # not a good way, this breaks if you add more functionality after celeb
-                # TODO refactor into functions?
-
-            # Cut out pixels overflowing image on the right
-            x_end = x+w + new_w
-            if x_end > img.shape[1]:
-                remove_pixels = x_end - img.shape[1]
-                celeb_img = celeb_img[:, :-remove_pixels, :]
-                new_w -= remove_pixels
-
-            # Cut out pixels overflowing image on the bottom
-            y_end = y+new_h
-            if y_end > img.shape[0]:
-                remove_pixels = y_end - img.shape[0]
-                celeb_img = celeb_img[:-remove_pixels, ...]
-                new_h -= remove_pixels
-
-            if celeb_img.size:
-                img[y : y+new_h, x+w : x+w+new_w, :] = celeb_img
-            
-                annotation = "CELEBRITY"
-                txtLoc = (x+w, y + h + 30)
-                putText(img, annotation, txtLoc, font_scale)
-            
-                annotation = "TWIN" # (%.0f %%)" % (100*np.exp(-face["celeb_distance"]))
-                txtLoc = (x+w, y + h + 60)
-                putText(img, annotation, txtLoc, font_scale)
-
-                annotation = identity.replace('ä', 'a').replace('ö', 'o').replace('å', 'o')
-                txtLoc = (x+w, y + h + 90)
-                putText(img, annotation, txtLoc, font_scale)
-
-        if __debug__:
-            try:
-                crop_128 = face["crop"]
-                crop_h, crop_w = crop_128.shape[0:2]
-                #if y+crop_h < img.shape[0] and x+w+new_w+crop_w < img.shape[1]:
-                img[y : y+crop_h, x+w+new_w : x+w+new_w+crop_w, : ] = crop_128
-            except:
-                pass
+        return img
 
             
     def showVideo(self, unit):
-        
+
+        showtime = time.time()
         unit.acquire()
         frame = copy.deepcopy(unit.getFrame())
         unit.release()
@@ -260,7 +269,7 @@ class ControllerThread(threading.Thread):
         validFaces = [f for f in self.faces if len(f['bboxes']) > self.minDetections]
 
         for face in validFaces:
-            self.drawFace(face, frame)
+            frame = self.drawFace(face, frame)
         
         frame = cv2.resize(frame, self.displaysize)
         cv2.imshow(self.caption, frame)
@@ -268,6 +277,9 @@ class ControllerThread(threading.Thread):
         
         if key == 27:
             self.terminate()
+
+        print("Time (s):", time.time() - showtime)
+
             
     def findNearestFace(self, bbox):
         
@@ -343,7 +355,3 @@ class ControllerThread(threading.Thread):
         
         return self.terminated
         
-
-def putText(img, text, location, scale):
-    cv2.putText(img, text=text, org=location, fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=scale, color=[255, 255, 0], thickness=2)
