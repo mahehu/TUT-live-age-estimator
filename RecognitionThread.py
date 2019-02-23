@@ -55,6 +55,7 @@ class RecognitionThread(threading.Thread):
         self.siamesepaths = params['celebmodels']
         self.siamesepath = self.siamesepaths["0"]
         self.celeb_dataset = params.get("recognition", "celeb_dataset")
+        self.visualization_path = params.get("recognition", "visualization_path")
         self.initialize_celeb()
 
         # Starting the thread
@@ -79,8 +80,12 @@ class RecognitionThread(threading.Thread):
 
         with h5py.File(celebrity_features, "r") as h5:
             celeb_features = np.array(h5["features"]).astype(np.float32)
-            self.celeb_files = list(h5["filenames"])
-            self.celeb_files = [s.decode("utf-8") for s in self.celeb_files]
+            #self.celeb_files = list(h5["filenames"])
+            #print(self.celeb_files)
+            #self.celeb_files = ["outputimages/" + s.decode("utf-8") for s in self.celeb_files]
+            #print(self.celeb_files)
+            self.path_ends = list(h5["path_ends"])
+            self.celeb_files = [os.path.join(self.visualization_path, s.decode("utf-8")) for s in self.path_ends]
 
         print("Building index...")
         self.celeb_index = faiss.IndexFlatL2(celeb_features.shape[1])
@@ -199,7 +204,7 @@ class RecognitionThread(threading.Thread):
                     dlib_img = img[..., ::-1].astype(np.uint8) # BGR to RGB
 
                     crop = self.crop_face(dlib_img, dlib_box)
-                    crop = cv2.resize(crop[..., ::-1], (224, 224)) # RGB to BGR
+                    crop = cv2.resize(crop, (224, 224))
 
 
                     siamese_target_size = self.siameseNet.input_shape[1:3]
@@ -210,22 +215,25 @@ class RecognitionThread(threading.Thread):
                     crop = crop.astype(np.float32)
                     crop_celeb = crop_celeb.astype(np.float32) / 255.0
 
+                    nn_input = np.expand_dims(crop / 255, axis=0)
                     # # Recognize age
                     # Recognize only if new face or every 5 rounds
                     if "age" not in face or face["recog_round"] % 5 == 0:
-                        agein = self.preprocess_input(crop) 
-                        time_start = time.time()
-                        ageout = self.ageNet.predict(np.expand_dims(agein, 0))[0]
+                        age_starttime = time.time()
+                        ageout = self.ageNet.predict(nn_input)[0]
                         age = np.dot(ageout, list(range(101)))
 
                         #with open("age_time.txt", "a") as fp:
                         #    fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))
+                        #print("Age time:", time.time() - age_starttime)
 
                         if "age" in face:
                             face["age"] = 0.95 * face["age"] + 0.05 * age
                         else:
                             face["age"] = age
                             face["recog_round"] = 0
+
+                        celeb_starttime = time.time()
 
                         siamese_features = self.siameseNet.predict(crop_celeb[np.newaxis, ...])
                         K = 1  # This many nearest matches
@@ -250,14 +258,13 @@ class RecognitionThread(threading.Thread):
                                 celeb_idx: Celebinfo(filename=celeb_filename, distance=celeb_distance),
                                 "recognitions": 1}
 
-                    # Switch to RGB here, because that is what these networks were trained with
-                    nn_input = np.expand_dims(crop[..., ::-1]/255, axis=0)
+                        #print("Celeb time:", time.time() - celeb_starttime)
 
-                    # # Recognize gender                                       
+                    # # Recognize gender
                     # Recognize only if new face or every 6 rounds
                     # This makes it unlikely to have to recognize all 3 on the same frame
                     if "gender" not in face or face["recog_round"] % 6 == 0:
-                        gender = self.genderNet.predict(nn_input)[0]
+                        gender = self.genderNet.predict(nn_input)[0][0]
                         #print(gender)
                         #print("Gender time: {:.2f} ms".format(1000*(time.time() - time_start)))
 

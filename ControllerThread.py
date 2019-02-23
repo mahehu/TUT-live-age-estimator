@@ -27,7 +27,9 @@ class ControllerThread(threading.Thread):
         threading.Thread.__init__(self)
 
         self.terminated = False
-        self.caption = params.get("window", "caption")        
+        self.caption = params.get("window", "caption")
+
+        self.initializeFonts(params)
 
         self.minDetections = int(params.get("recognition", "mindetections"))
         
@@ -36,6 +38,7 @@ class ControllerThread(threading.Thread):
         self.displaysize = tuple([int(s) for s in self.displaysize])
 
         # Get current resolution
+        # TODO test on Windows? Probably breaks
         self.resolution = subprocess.Popen('xrandr | grep "\*" | cut -d" " -f4', shell=True,
                                            stdout=subprocess.PIPE).communicate()[0].decode("utf-8").rstrip().split('x')
         self.resolution = [int(s) for s in self.resolution]
@@ -60,6 +63,7 @@ class ControllerThread(threading.Thread):
         unused_width = self.resolution[0] - self.displaysize[0]
 
         cv2.moveWindow(self.caption, unused_width//2, 0)  # Will move window when everything is running. Better way TODO
+
         self.commandInterface()
 
     def commandInterface(self):
@@ -78,6 +82,26 @@ class ControllerThread(threading.Thread):
                 print("Bye!")
                 self.terminate()
                 break
+
+    def initializeFonts(self, params):
+        """
+        Tries to initialize freetype for nicer fonts, if not installed fall back to standard.
+        Freetype isn't included in the PIP/Conda packages, so we can't require it.
+        """
+        self.freeType = None
+        freetype_fontpath = params.get("window", "freetype_fontpath")
+        sizetest_text = "FEMALE 100%"  # Probably longest text possible
+        try:
+            self.freeType = cv2.freetype.createFreeType2()
+            self.freeType.loadFontData(fontFileName=freetype_fontpath, id=0)
+            self.textBaseScale = 20  # Maximum text scale, will be decreased if there's overlap.
+            self.textBaseWidth = self.freeType.getTextSize(sizetest_text, self.textBaseScale, -1)[0][0]
+
+        except AttributeError:
+            print("OpenCV Freetype not found, falling back to standard OpenCV font...")
+            self.textBaseScale = 0.6
+            self.textBaseWidth = cv2.getTextSize(sizetest_text, cv2.FONT_HERSHEY_SIMPLEX, self.textBaseScale, 2)[0][0]
+
 
     def run(self):
         while not self.terminated:
@@ -154,10 +178,12 @@ class ControllerThread(threading.Thread):
 
         celeb_img = cv2.imread(filename)
         aspect_ratio = celeb_img.shape[1] / celeb_img.shape[0]
-        new_h = h
-        new_w = int(aspect_ratio * h)
+        new_w = w
+        new_h = int(w/aspect_ratio)
+        if new_h > h:
+            new_h = h
         try:
-            celeb_img = cv2.resize(celeb_img, (new_w, new_h))
+            celeb_img = cv2.resize(celeb_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
         except AssertionError:  # new_w or new_h is 0 ie bounding box size is 0
             return None
 
@@ -169,14 +195,15 @@ class ControllerThread(threading.Thread):
             new_w -= remove_pixels
 
         # Cut out pixels overflowing image on the bottom
-        y_end = y + new_h
+        y_offset = h - new_h
+        y_end = y + y_offset + new_h
         if y_end > img.shape[0]:
             remove_pixels = y_end - img.shape[0]
             celeb_img = celeb_img[:-remove_pixels, ...]
             new_h -= remove_pixels
 
         if celeb_img.size:
-            img[y: y + new_h, x + w: x + w + new_w, :] = celeb_img
+            img[y + y_offset: y + y_offset + new_h, x + w: x + w + new_w, :] = celeb_img
             return identity
 
     def drawFace(self, face, img):
@@ -196,21 +223,13 @@ class ControllerThread(threading.Thread):
         if "celebs" in face.keys():
             celeb_identity = self.AddCeleb(face, img, x, y, w, h)
 
-        font_scale = 30
-        font = ImageFont.truetype("Verdana.ttf", font_scale)
-
         # Check if text can overlap the celeb texts (goes past the bounding box), if so decrease size
-        test_text = "FEMALE 100%"  # Probably longest text possible
-        text_length = font.getsize(test_text)[0]
-        if text_length > w:
-            font_scale *= w/text_length
-            font_scale = int(font_scale)
+        text_size = self.textBaseScale
 
-        font = ImageFont.truetype("Verdana.ttf", font_scale)
-
-        PIL_img = Image.fromarray(img[..., ::-1])
-        draw = ImageDraw.Draw(PIL_img)
-
+        if self.textBaseWidth > w:
+            text_size *= w/self.textBaseWidth
+            if self.freeType:
+                text_size = int(text_size)  # Freetype doesn't accept float text size.
 
 
         # 1. AGE
@@ -219,16 +238,17 @@ class ControllerThread(threading.Thread):
             age = face['age']
             annotation = "Age: %.0f" % age
             txtLoc = (x, y + h + 30)
-            draw.text(txtLoc, annotation, fill='Cyan', font=font)
+            self.writeText(img, annotation, txtLoc, text_size)
 
-        # 2. GENDER
+
+            # 2. GENDER
 
         if "gender" in face.keys():
             gender = "MALE" if face['gender'] > 0.5 else "FEMALE"
             genderProb = max(face["gender"], 1-face["gender"])
             annotation = "%s %.0f %%" % (gender, 100.0 * genderProb)
             txtLoc = (x, y + h + 60)
-            draw.text(txtLoc, annotation, fill='Cyan', font=font)
+            self.writeText(img, annotation, txtLoc, text_size)
 
         # 3. EXPRESSION
 
@@ -236,30 +256,23 @@ class ControllerThread(threading.Thread):
             expression = face["expression"]
             annotation = "%s" % (expression)
             txtLoc = (x, y + h + 90)
-            draw.text(txtLoc, annotation, fill='Cyan', font=font)
-
+            self.writeText(img, annotation, txtLoc, text_size)
 
         if celeb_identity:
             annotation = "CELEBRITY"
             txtLoc = (x + w, y + h + 30)
-            draw.text(txtLoc, annotation, fill='Cyan', font=font)
+            self.writeText(img, annotation, txtLoc, text_size)
 
             annotation = "TWIN"  # (%.0f %%)" % (100*np.exp(-face["celeb_distance"]))
             txtLoc = (x + w, y + h + 60)
-            draw.text(txtLoc, annotation, fill='Cyan', font=font)
+            self.writeText(img, annotation, txtLoc, text_size)
 
-            annotation = celeb_identity#.replace('ä', 'a').replace('ö', 'o').replace('å', 'o')
+            annotation = celeb_identity
             txtLoc = (x + w, y + h + 90)
-            draw.text(txtLoc, annotation, fill='Cyan', font=font)
+            self.writeText(img, annotation, txtLoc, text_size)
 
-        img = np.asarray(PIL_img)[..., ::-1].copy()
-
-        return img
-
-            
     def showVideo(self, unit):
 
-        showtime = time.time()
         unit.acquire()
         frame = copy.deepcopy(unit.getFrame())
         unit.release()
@@ -269,7 +282,7 @@ class ControllerThread(threading.Thread):
         validFaces = [f for f in self.faces if len(f['bboxes']) > self.minDetections]
 
         for face in validFaces:
-            frame = self.drawFace(face, frame)
+            self.drawFace(face, frame)
         
         frame = cv2.resize(frame, self.displaysize)
         cv2.imshow(self.caption, frame)
@@ -277,8 +290,6 @@ class ControllerThread(threading.Thread):
         
         if key == 27:
             self.terminate()
-
-        print("Time (s):", time.time() - showtime)
 
             
     def findNearestFace(self, bbox):
@@ -350,8 +361,27 @@ class ControllerThread(threading.Thread):
             return None
         else:
             return self.faces
-    
+
     def isTerminated(self):
         
         return self.terminated
-        
+
+    def writeText(self, img, annotation, location, size):
+        if self.freeType:
+            self.freeType.putText(img=img,
+                            text=annotation,
+                            org=location,
+                            fontHeight=size,
+                            color=(255, 255, 0),
+                            thickness=-1,
+                            line_type=cv2.LINE_AA,
+                            bottomLeftOrigin=True)
+        else:
+            annotation = annotation.replace('ä', 'a').replace('ö', 'o').replace('å', 'o')
+            cv2.putText(img,
+                        text=annotation,
+                        org=location,
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=size,
+                        color=[255, 255, 0],
+                        thickness=2)
