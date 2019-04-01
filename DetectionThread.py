@@ -48,8 +48,8 @@ class DetectionThread(threading.Thread):
             unit.release()
 
             rows, cols = img.shape[0:2]
-            self.cvNet.setInput(cv2.dnn.blobFromImage(detection_img, 1.0 / 127.5, (self.width, self.height),
-                                                  (127.5, 127.5, 127.5), swapRB=True, crop=False))
+            self.cvNet.setInput(cv2.dnn.blobFromImage(detection_img, size=(self.width, self.height),
+                                                      swapRB=True, crop=False))
             timer = time.time()
             cvOut = self.cvNet.forward()
 
