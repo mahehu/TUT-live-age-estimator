@@ -23,6 +23,20 @@ class RecognitionThread(threading.Thread):
         threading.Thread.__init__(self)
         self.parent = parent
 
+        ##### Initialize aligners for face alignment.
+        aligner_path = params.get("recognition", "aligner")
+        aligner_targets_path = params.get("recognition", "aligner_targets")
+        self.aligner = dlib.shape_predictor(aligner_path)
+
+        # load targets
+        aligner_targets = np.loadtxt(aligner_targets_path)
+        left_eye = (aligner_targets[36] + aligner_targets[39]) / 2
+        right_eye = (aligner_targets[42] + aligner_targets[45]) / 2
+        nose = aligner_targets[30]
+        left_mouth = aligner_targets[48]
+        right_mouth = aligner_targets[54]
+        self.shape_targets = np.stack((left_eye, left_mouth, nose, right_eye, right_mouth))
+
         ##### Initialize networks for Age, Gender and Expression
         ##### 1. AGE
         print("Initializing age network...")
@@ -80,10 +94,6 @@ class RecognitionThread(threading.Thread):
 
         with h5py.File(celebrity_features, "r") as h5:
             celeb_features = np.array(h5["features"]).astype(np.float32)
-            #self.celeb_files = list(h5["filenames"])
-            #print(self.celeb_files)
-            #self.celeb_files = ["outputimages/" + s.decode("utf-8") for s in self.celeb_files]
-            #print(self.celeb_files)
             self.path_ends = list(h5["path_ends"])
             self.celeb_files = [os.path.join(self.visualization_path, s.decode("utf-8")) for s in self.path_ends]
 
@@ -138,7 +148,6 @@ class RecognitionThread(threading.Thread):
         new_location_y2 = crop_y1 - full_crop_y1 + crop_size_h - 1
 
         new_img = np.random.randint(256, size=(new_size_h, new_size_w, img.shape[2])).astype('uint8')
-        # new_img = np.random.rand(new_size_h, new_size_w, img.shape[2])
 
         new_img[new_location_y1: new_location_y2 + 1, new_location_x1: new_location_x2 + 1, :] = \
             img[crop_y1:crop_y2 + 1, crop_x1:crop_x2 + 1, :]
@@ -154,23 +163,45 @@ class RecognitionThread(threading.Thread):
             new_img[:, 0:new_location_x1, :] = np.tile(new_img[:, new_location_x1:new_location_x1 + 1, :],
                                                        (1, new_location_x1, 1))
         if new_location_x2 < new_size_w - 1:
-            # plt.imshow(new_img)
             new_img[:, new_location_x2 + 1:new_size_w, :] = np.tile(new_img[:, new_location_x2:new_location_x2 + 1, :],
                                                                     (1, new_size_w - new_location_x2 - 1, 1))
 
         return new_img
 
+    def five_points_aligner(self, rect, shape_targets, landmarks_pred, img):
 
-    def preprocess_input(self, img):
+        B = shape_targets
+        A = np.hstack((np.array(landmarks_pred), np.ones((len(landmarks_pred), 1))))
 
-        # Expected input is BGR
-        x = img - img.min()
-        x = 255.0 * x / x.max()
+        a = np.row_stack((np.array([-A[0][1], -A[0][0], 0, -1]), np.array([
+            A[0][0], -A[0][1], 1, 0])))
+        b = np.row_stack((-B[0][1], B[0][0]))
 
-        x[..., 0] -= 103.939
-        x[..., 1] -= 116.779
-        x[..., 2] -= 123.68
-        return x
+        for i in range(A.shape[0] - 1):
+            i += 1
+            a = np.row_stack((a, np.array([-A[i][1], -A[i][0], 0, -1])))
+            a = np.row_stack((a, np.array([A[i][0], -A[i][1], 1, 0])))
+            b = np.row_stack((b, np.array([[-B[i][1]], [B[i][0]]])))
+
+        X, res, rank, s = np.linalg.lstsq(a, b)
+        cos = (X[0][0]).real.astype(np.float32)
+        sin = (X[1][0]).real.astype(np.float32)
+        t_x = (X[2][0]).real.astype(np.float32)
+        t_y = (X[3][0]).real.astype(np.float32)
+
+        H = np.array([[cos, -sin, t_x], [sin, cos, t_y]])
+        s = np.linalg.eigvals(H[:, :-1])
+        R = s.max() / s.min()
+
+        if R < 2.0:
+            warped = cv2.warpAffine(img, H, (224, 224))
+        else:
+            # Seems to distort too much, probably error in landmarks
+            # Let's just crop.
+            crop = self.crop_face(img, rect)
+            warped = cv2.resize(crop, (224, 224))
+
+        return warped
 
     def run(self):
         Celebinfo = namedtuple('Celeb', ['filename', 'distance'])
@@ -200,17 +231,25 @@ class RecognitionThread(threading.Thread):
                     mean_box = np.mean(face['bboxes'], axis=0)
                     x, y, w, h = [int(c) for c in mean_box]
 
-                    dlib_box = dlib.rectangle(left=x, top=y, right=x + w, bottom=y + h)
-                    dlib_img = img[..., ::-1].astype(np.uint8) # BGR to RGB
+                    # Align the face to match the targets
 
-                    crop = self.crop_face(dlib_img, dlib_box)
-                    crop = cv2.resize(crop, (224, 224))
+                    # 1. DETECT LANDMARKS
+                    dlib_box = dlib.rectangle(left=x, top=y, right=x+w, bottom=y+h)
+                    dlib_img = img[..., ::-1].astype(np.uint8)  # BGR to RGB
+                    s = self.aligner(dlib_img, dlib_box)
+                    landmarks = [[s.part(k).x, s.part(k).y] for k in range(s.num_parts)]
 
+                    # 2. ALIGN
+                    landmarks = np.array(landmarks)
+                    crop = self.five_points_aligner(dlib_box, self.shape_targets, landmarks,
+                                                    dlib_img)
 
                     siamese_target_size = self.siameseNet.input_shape[1:3]
                     crop_celeb = cv2.resize(crop, siamese_target_size)
-                    if __debug__:
-                        face["crop"] = crop_celeb
+
+                    # Show aligned face in corner if debugging
+                    #if __debug__:
+                    #    face["crop"] = crop_celeb
                     
                     crop = crop.astype(np.float32)
                     crop_celeb = crop_celeb.astype(np.float32) / 255.0
