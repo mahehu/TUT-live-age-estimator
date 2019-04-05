@@ -244,22 +244,23 @@ class RecognitionThread(threading.Thread):
                     crop = self.five_points_aligner(dlib_box, self.shape_targets, landmarks,
                                                     dlib_img)
 
-                    siamese_target_size = self.siameseNet.input_shape[1:3]
-                    crop_celeb = cv2.resize(crop, siamese_target_size)
+                    # Save aligned face crop, used for debugging if turned on.
+                    face["crop"] = crop
 
-                    # Show aligned face in corner if debugging
-                    #if __debug__:
-                    #    face["crop"] = crop_celeb
-                    
                     crop = crop.astype(np.float32)
-                    crop_celeb = crop_celeb.astype(np.float32) / 255.0
 
-                    nn_input = np.expand_dims(crop / 255, axis=0)
+                    siamese_target_size = self.siameseNet.input_shape[1:3]
+                    crop_celeb = cv2.resize(crop, siamese_target_size).astype(np.float32)
+
+                    # Preprocess network inputs, add singleton batch dimension
+                    recog_input = np.expand_dims(crop / 255, axis=0)
+                    siamese_input = np.expand_dims(crop_celeb / 255, axis=0)
+
                     # # Recognize age
                     # Recognize only if new face or every 5 rounds
                     if "age" not in face or face["recog_round"] % 5 == 0:
                         age_starttime = time.time()
-                        ageout = self.ageNet.predict(nn_input)[0]
+                        ageout = self.ageNet.predict(recog_input)[0]
                         age = np.dot(ageout, list(range(101)))
 
                         #with open("age_time.txt", "a") as fp:
@@ -274,7 +275,7 @@ class RecognitionThread(threading.Thread):
 
                         celeb_starttime = time.time()
 
-                        siamese_features = self.siameseNet.predict(crop_celeb[np.newaxis, ...])
+                        siamese_features = self.siameseNet.predict(siamese_input)
                         K = 1  # This many nearest matches
                         celeb_distance, I = self.celeb_index.search(siamese_features, K)
                         celeb_idx = I[0][0]
@@ -303,7 +304,7 @@ class RecognitionThread(threading.Thread):
                     # Recognize only if new face or every 6 rounds
                     # This makes it unlikely to have to recognize all 3 on the same frame
                     if "gender" not in face or face["recog_round"] % 6 == 0:
-                        gender = self.genderNet.predict(nn_input)[0][0]
+                        gender = self.genderNet.predict(recog_input)[0][0]
                         #print(gender)
                         #print("Gender time: {:.2f} ms".format(1000*(time.time() - time_start)))
 
@@ -316,7 +317,7 @@ class RecognitionThread(threading.Thread):
 
                     # Recognize expression
                     # Recognize always as this is expected to change (ie. not constant)
-                    out = self.expressionNet.predict(nn_input)
+                    out = self.expressionNet.predict(recog_input)
 
 #                    with open("exp_time.txt", "a") as fp:
 #                        fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))

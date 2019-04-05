@@ -37,6 +37,8 @@ class ControllerThread(threading.Thread):
         self.displaysize = self.displaysize.upper().split("X")
         self.displaysize = tuple([int(s) for s in self.displaysize])
 
+        self.debug = params.get("general", "debug") not in ("false", "False", "0")
+
         # Get current resolution
         # TODO test on Windows? Probably breaks
         self.resolution = subprocess.Popen('xrandr | grep "\*" | cut -d" " -f4', shell=True,
@@ -270,6 +272,12 @@ class ControllerThread(threading.Thread):
             annotation = celeb_identity
             txtLoc = (x + w, y + h + 90)
             self.writeText(img, annotation, txtLoc, text_size)
+
+        # DEBUG ONLY - Visualize aligned face crop in corner.
+        if self.debug and "crop" in face.keys():
+            croph, cropw = face["crop"].shape[0:2]
+            imgh, imgw = img.shape[0:2]
+            img[imgh-croph:, imgw-cropw:, :] = face["crop"][..., ::-1]
 
     def showVideo(self, unit):
 

@@ -5,19 +5,18 @@ import cv2
 
 """
 Generates pre-scaled output images from source images, that will be shown in the application as celebrity match.
-The use case for this is that you might want to compare cropped/aligned face features to cropped/aligned celebrity
-features. They might not look very pleasant though, so this gives the option to use unprocessed images in visualization. 
+The use case for this is that you probably want to compare aligned face features to aligned celebrity
+features. They might not look very pleasant though, so this gives the option to use unprocessed images in visualization.
+
+The usage of large source images can slow down the program heavily (reading and resizing the image), so the purpose of this
+script is to adjust them to a small but still pleasant looking size. 
 """
 
 output_size = 300 # A compromise to preserve image quality while getting rid of huge images that would slow down the
-# program. The output images are resized further in the application, hopefully to a smaller size than this.
+# live-age-estimator. The output images are resized further in the application, hopefully to a smaller size than this.
 
 if __name__ == '__main__':
-    path = "/home/tommola/TUT-live-age-estimator/recognizers/celebrities/data/FinnishCelebs_unprocessed"
-    print(os.path.abspath(path))
-    print(os.path.basename(path))
-    print(os.path.split(path))
-    #print(os.path.join(os.path.split(path)[0:-1]))
+    path = "../recognizers/celebrities/data/FinnishCelebs_unprocessed"
     basepath, celebfolder = os.path.split(path)
     os.makedirs(os.path.join(basepath, "visualization_" + celebfolder), exist_ok=True)
 
@@ -26,16 +25,11 @@ if __name__ == '__main__':
             if filename.lower().endswith(("jpg", "jpeg", "png", "bmp")):
                 celebname = os.path.split(root)[1]
 
-
                 img = cv2.imread(root + os.sep + filename)
                 newpath = os.path.join(basepath, "visualization_" + celebfolder, celebname)
                 os.makedirs(newpath, exist_ok=True)
 
                 w, h = img.shape[0:2]
-
-                if "Cheek" in celebname:
-                    print(w, h)
-                    print(filename)
 
                 if w >= h:
                     new_h = output_size
