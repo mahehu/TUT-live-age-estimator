@@ -12,13 +12,13 @@ from RecognitionThread import RecognitionThread
 
 import threading
 import time
-import datetime
+import sys
 import cv2
 import copy
 import os
 import numpy as np
 import subprocess
-from PIL import Image, ImageFont, ImageDraw
+
 class ControllerThread(threading.Thread):
     """ Responsible for starting and shutting down all threads and
         services. """
@@ -39,11 +39,13 @@ class ControllerThread(threading.Thread):
 
         self.debug = params.get("general", "debug") not in ("false", "False", "0")
 
-        # Get current resolution
-        # TODO test on Windows? Probably breaks
-        self.resolution = subprocess.Popen('xrandr | grep "\*" | cut -d" " -f4', shell=True,
-                                           stdout=subprocess.PIPE).communicate()[0].decode("utf-8").rstrip().split('x')
-        self.resolution = [int(s) for s in self.resolution]
+        # Get current resolution (only implemented for Linux)
+        if sys.platform == 'linux':
+            self.resolution = subprocess.Popen('xrandr | grep "\*" | cut -d" " -f4', shell=True,
+                                               stdout=subprocess.PIPE).communicate()[0].decode("utf-8").rstrip().split('x')
+            self.resolution = [int(s) for s in self.resolution]
+        else:
+            self.resolution = [1024, 768]
 
         # Start frame storage
         queueLength = params.getint("server", "num_frames")
@@ -64,7 +66,7 @@ class ControllerThread(threading.Thread):
 
         unused_width = self.resolution[0] - self.displaysize[0]
 
-        cv2.moveWindow(self.caption, unused_width//2, 0)  # Will move window when everything is running. Better way TODO
+        cv2.moveWindow(self.caption, unused_width//2, 0)  # Will move window to center when everything is running.
 
         self.commandInterface()
 

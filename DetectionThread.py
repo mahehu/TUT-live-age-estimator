@@ -3,8 +3,7 @@
 import cv2
 import threading
 import time
-import numpy as np
-import GrabUnit
+
 
 class DetectionThread(threading.Thread):
 
@@ -20,7 +19,7 @@ class DetectionThread(threading.Thread):
 
         self.cvNet = cv2.dnn.readNetFromTensorflow(frozen_graph, text_graph)
 
-	# Image input size, must match the network
+        # Image input size, must match the network
         self.width = int(params.get("detection", "input_width"))
         self.height = int(params.get("detection", "input_height"))
 
@@ -35,7 +34,7 @@ class DetectionThread(threading.Thread):
                 unit = self.parent.getUnit(self)
                 if unit == None:  # No units available yet
                     time.sleep(0.1)
-                    
+
                 if self.parent.isTerminated():
                     break
 
@@ -43,7 +42,7 @@ class DetectionThread(threading.Thread):
                 break
 
             img = unit.getFrame()
-        
+
             detection_img = img.copy()
             unit.release()
 
@@ -53,7 +52,7 @@ class DetectionThread(threading.Thread):
             timer = time.time()
             cvOut = self.cvNet.forward()
 
-            #print("Det time: {:.2f} ms".format(1000*(time.time() - timer)))
+            # print("Det time: {:.2f} ms".format(1000*(time.time() - timer)))
             bboxes = []
             timestamps = []
 
@@ -72,4 +71,3 @@ class DetectionThread(threading.Thread):
                     timestamps.append(unit.getTimeStamp())
 
             self.parent.setDetections(bboxes, timestamps)
-

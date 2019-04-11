@@ -183,7 +183,7 @@ class RecognitionThread(threading.Thread):
             a = np.row_stack((a, np.array([A[i][0], -A[i][1], 1, 0])))
             b = np.row_stack((b, np.array([[-B[i][1]], [B[i][0]]])))
 
-        X, res, rank, s = np.linalg.lstsq(a, b)
+        X, res, rank, s = np.linalg.lstsq(a, b, rcond=-1)
         cos = (X[0][0]).real.astype(np.float32)
         sin = (X[1][0]).real.astype(np.float32)
         t_x = (X[2][0]).real.astype(np.float32)
