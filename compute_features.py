@@ -190,5 +190,4 @@ if __name__ == "__main__":
         h5file["filenames"] = b_files
         b_pathends = [bytes(f, 'utf-8') for f in path_ends]
         h5file["path_ends"] = b_pathends
-        print(b_pathends)
 
