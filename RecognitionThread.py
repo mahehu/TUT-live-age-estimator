@@ -27,7 +27,15 @@ class RecognitionThread(threading.Thread):
         aligner_path = params.get("recognition", "aligner")
         aligner_targets_path = params.get("recognition", "aligner_targets")
         self.aligner = dlib.shape_predictor(aligner_path)
-        self.aligner_targets = np.loadtxt(aligner_targets_path)
+
+        # load targets
+        aligner_targets = np.loadtxt(aligner_targets_path)
+        left_eye = (aligner_targets[36] + aligner_targets[39]) / 2
+        right_eye = (aligner_targets[42] + aligner_targets[45]) / 2
+        nose = aligner_targets[30]
+        left_mouth = aligner_targets[48]
+        right_mouth = aligner_targets[54]
+        self.shape_targets = np.stack((left_eye, left_mouth, nose, right_eye, right_mouth))
 
         ##### Initialize networks for Age, Gender and Expression
         ##### 1. AGE
@@ -54,13 +62,14 @@ class RecognitionThread(threading.Thread):
         self.expressionNet._make_predict_function()
         
         ##### Read class names
-        self.expressions = ['Neutral', 'Happy', 'Sad', 'Surprise', 'Fear', 'Disgust', 'Anger']
+        self.expressions = {int(key): val for key, val in params['expressions'].items()}  # convert string key to int
         self.minDetections = int(params.get("recognition", "mindetections"))
 
         ##### 4. CELEBRITY
         self.siamesepaths = params['celebmodels']
         self.siamesepath = self.siamesepaths["0"]
         self.celeb_dataset = params.get("recognition", "celeb_dataset")
+        self.visualization_path = params.get("recognition", "visualization_path")
         self.initialize_celeb()
 
         # Starting the thread
@@ -85,44 +94,12 @@ class RecognitionThread(threading.Thread):
 
         with h5py.File(celebrity_features, "r") as h5:
             celeb_features = np.array(h5["features"]).astype(np.float32)
-            self.celeb_files = list(h5["filenames"])
-            self.celeb_files = [s.decode("utf-8") for s in self.celeb_files]
+            self.path_ends = list(h5["path_ends"])
+            self.celeb_files = [os.path.join(self.visualization_path, s.decode("utf-8")) for s in self.path_ends]
 
         print("Building index...")
         self.celeb_index = faiss.IndexFlatL2(celeb_features.shape[1])
         self.celeb_index.add(celeb_features)
-
-    def estimateRigidTransform(self, landmarks, aligner_targets):
-        # H = np.vstack([src[:, 0], src[:, 1], np.ones_like(src[:, 0])]).T
-        # M = np.linalg.lstsq(H, dst)[0].T
-
-        first_idx = 27
-        B = aligner_targets[first_idx:, :]
-        landmarks = landmarks[first_idx:]
-        A = np.hstack((np.array(landmarks), np.ones((len(landmarks), 1))))
-
-        a = np.row_stack((np.array([-A[0][1], -A[0][0], 0, -1]), np.array([
-            A[0][0], -A[0][1], 1, 0])))
-        b = np.row_stack((-B[0][1], B[0][0]))
-
-        for j in range(A.shape[0] - 1):
-            j += 1
-            a = np.row_stack((a, np.array([-A[j][1], -A[j][0], 0, -1])))
-            a = np.row_stack((a, np.array([A[j][0], -A[j][1], 1, 0])))
-            b = np.row_stack((b, np.array([[-B[j][1]], [B[j][0]]])))
-        X, res, rank, s = np.linalg.lstsq(a, b, rcond=-1)
-        cos = (X[0][0]).real.astype(np.float32)
-        sin = (X[1][0]).real.astype(np.float32)
-        t_x = (X[2][0]).real.astype(np.float32)
-        t_y = (X[3][0]).real.astype(np.float32)
-        # scale = np.sqrt(np.square(cos) + np.square(sin))
-
-        H = np.array([[cos, -sin, t_x], [sin, cos, t_y]])
-
-        s = np.linalg.eigvals(H[:, :-1])
-        R = s.max() / s.min()
-
-        return H, R
 
     def crop_face(self, img, rect, margin=0.2):
         x1 = rect.left()
@@ -132,6 +109,19 @@ class RecognitionThread(threading.Thread):
         # size of face
         w = x2 - x1 + 1
         h = y2 - y1 + 1
+
+        # Extend the area into square shape:
+        if w > h:
+            center = int(0.5 * (y1 + y2))
+            h = w
+            y1 = center - int(h / 2)
+            y2 = y1 + h
+        elif h > w:
+            center = int(0.5 * (x1 + x2))
+            w = h
+            x1 = center - int(w / 2)
+            x2 = x1 + w
+
         # add margin
         full_crop_x1 = x1 - int(w * margin)
         full_crop_y1 = y1 - int(h * margin)
@@ -158,7 +148,6 @@ class RecognitionThread(threading.Thread):
         new_location_y2 = crop_y1 - full_crop_y1 + crop_size_h - 1
 
         new_img = np.random.randint(256, size=(new_size_h, new_size_w, img.shape[2])).astype('uint8')
-        # new_img = np.random.rand(new_size_h, new_size_w, img.shape[2])
 
         new_img[new_location_y1: new_location_y2 + 1, new_location_x1: new_location_x2 + 1, :] = \
             img[crop_y1:crop_y2 + 1, crop_x1:crop_x2 + 1, :]
@@ -174,23 +163,45 @@ class RecognitionThread(threading.Thread):
             new_img[:, 0:new_location_x1, :] = np.tile(new_img[:, new_location_x1:new_location_x1 + 1, :],
                                                        (1, new_location_x1, 1))
         if new_location_x2 < new_size_w - 1:
-            # plt.imshow(new_img)
             new_img[:, new_location_x2 + 1:new_size_w, :] = np.tile(new_img[:, new_location_x2:new_location_x2 + 1, :],
                                                                     (1, new_size_w - new_location_x2 - 1, 1))
 
         return new_img
 
+    def five_points_aligner(self, rect, shape_targets, landmarks_pred, img):
 
-    def preprocess_input(self, img):
+        B = shape_targets
+        A = np.hstack((np.array(landmarks_pred), np.ones((len(landmarks_pred), 1))))
 
-        # Expected input is BGR
-        x = img - img.min()
-        x = 255.0 * x / x.max()
+        a = np.row_stack((np.array([-A[0][1], -A[0][0], 0, -1]), np.array([
+            A[0][0], -A[0][1], 1, 0])))
+        b = np.row_stack((-B[0][1], B[0][0]))
 
-        x[..., 0] -= 103.939
-        x[..., 1] -= 116.779
-        x[..., 2] -= 123.68
-        return x
+        for i in range(A.shape[0] - 1):
+            i += 1
+            a = np.row_stack((a, np.array([-A[i][1], -A[i][0], 0, -1])))
+            a = np.row_stack((a, np.array([A[i][0], -A[i][1], 1, 0])))
+            b = np.row_stack((b, np.array([[-B[i][1]], [B[i][0]]])))
+
+        X, res, rank, s = np.linalg.lstsq(a, b, rcond=-1)
+        cos = (X[0][0]).real.astype(np.float32)
+        sin = (X[1][0]).real.astype(np.float32)
+        t_x = (X[2][0]).real.astype(np.float32)
+        t_y = (X[3][0]).real.astype(np.float32)
+
+        H = np.array([[cos, -sin, t_x], [sin, cos, t_y]])
+        s = np.linalg.eigvals(H[:, :-1])
+        R = s.max() / s.min()
+
+        if R < 2.0:
+            warped = cv2.warpAffine(img, H, (224, 224))
+        else:
+            # Seems to distort too much, probably error in landmarks
+            # Let's just crop.
+            crop = self.crop_face(img, rect)
+            warped = cv2.resize(crop, (224, 224))
+
+        return warped
 
     def run(self):
         Celebinfo = namedtuple('Celeb', ['filename', 'distance'])
@@ -223,41 +234,38 @@ class RecognitionThread(threading.Thread):
                     # Align the face to match the targets
 
                     # 1. DETECT LANDMARKS
-                    dlib_box = dlib.rectangle(left=x, top=y, right=x + w, bottom=y + h)
-                    dlib_img = img[..., ::-1].astype(np.uint8)
+                    dlib_box = dlib.rectangle(left=x, top=y, right=x+w, bottom=y+h)
+                    dlib_img = img[..., ::-1].astype(np.uint8)  # BGR to RGB
                     s = self.aligner(dlib_img, dlib_box)
                     landmarks = [[s.part(k).x, s.part(k).y] for k in range(s.num_parts)]
 
                     # 2. ALIGN
                     landmarks = np.array(landmarks)
-                    M,R = self.estimateRigidTransform(landmarks, self.aligner_targets)
+                    crop = self.five_points_aligner(dlib_box, self.shape_targets, landmarks,
+                                                    dlib_img)
 
-                    if R < 1.5:
-                        crop = cv2.warpAffine(img, M, (224, 224), borderMode=2)
-                    else:
-                        # Seems to distort too much, probably error in landmarks, then let's just crop.
-                        crop = self.crop_face(dlib_img, dlib_box)
-                        crop = cv2.resize(crop, (224, 224))
+                    # Save aligned face crop, used for debugging if turned on.
+                    face["crop"] = crop
 
+                    crop = crop.astype(np.float32)
 
                     siamese_target_size = self.siameseNet.input_shape[1:3]
-                    crop_celeb = cv2.resize(crop, siamese_target_size)
-                    if __debug__:
-                        face["crop"] = crop_celeb
-                    
-                    crop = crop.astype(np.float32)
-                    crop_celeb = crop_celeb.astype(np.float32) / 255.0
+                    crop_celeb = cv2.resize(crop, siamese_target_size).astype(np.float32)
+
+                    # Preprocess network inputs, add singleton batch dimension
+                    recog_input = np.expand_dims(crop / 255, axis=0)
+                    siamese_input = np.expand_dims(crop_celeb / 255, axis=0)
 
                     # # Recognize age
                     # Recognize only if new face or every 5 rounds
                     if "age" not in face or face["recog_round"] % 5 == 0:
-                        agein = self.preprocess_input(crop) 
-                        time_start = time.time()
-                        ageout = self.ageNet.predict(np.expand_dims(agein, 0))[0]
+                        age_starttime = time.time()
+                        ageout = self.ageNet.predict(recog_input)[0]
                         age = np.dot(ageout, list(range(101)))
 
                         #with open("age_time.txt", "a") as fp:
                         #    fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))
+                        #print("Age time:", time.time() - age_starttime)
 
                         if "age" in face:
                             face["age"] = 0.95 * face["age"] + 0.05 * age
@@ -265,7 +273,9 @@ class RecognitionThread(threading.Thread):
                             face["age"] = age
                             face["recog_round"] = 0
 
-                        siamese_features = self.siameseNet.predict(crop_celeb[np.newaxis, ...])
+                        celeb_starttime = time.time()
+
+                        siamese_features = self.siameseNet.predict(siamese_input)
                         K = 1  # This many nearest matches
                         celeb_distance, I = self.celeb_index.search(siamese_features, K)
                         celeb_idx = I[0][0]
@@ -288,14 +298,13 @@ class RecognitionThread(threading.Thread):
                                 celeb_idx: Celebinfo(filename=celeb_filename, distance=celeb_distance),
                                 "recognitions": 1}
 
-                    # Switch to RGB here, because that is what these networks were trained with
-                    nn_input = np.expand_dims(crop[..., ::-1]/255, axis=0)
+                        #print("Celeb time:", time.time() - celeb_starttime)
 
-                    # # Recognize gender                                       
+                    # # Recognize gender
                     # Recognize only if new face or every 6 rounds
                     # This makes it unlikely to have to recognize all 3 on the same frame
                     if "gender" not in face or face["recog_round"] % 6 == 0:
-                        gender = self.genderNet.predict(nn_input)[0]
+                        gender = self.genderNet.predict(recog_input)[0][0]
                         #print(gender)
                         #print("Gender time: {:.2f} ms".format(1000*(time.time() - time_start)))
 
@@ -308,7 +317,7 @@ class RecognitionThread(threading.Thread):
 
                     # Recognize expression
                     # Recognize always as this is expected to change (ie. not constant)
-                    out = self.expressionNet.predict(nn_input)
+                    out = self.expressionNet.predict(recog_input)
 
 #                    with open("exp_time.txt", "a") as fp:
 #                        fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))

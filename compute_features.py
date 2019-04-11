@@ -95,6 +95,10 @@ if __name__ == "__main__":
 
     #files = find_images(path = images_folder)
     files = find_images_from_tree(path = images_folder)
+
+    # Gather the file structure of the dataset, used when visualizing with different images than the ones features are calculated from
+    commonpath = os.path.commonpath((files[0], images_folder))
+    path_ends = [os.path.relpath(file, start=commonpath) for file in files]
     
     in_shape = model.input_shape[1:3]
     out_dim  = model.output_shape[-1]
@@ -184,4 +188,6 @@ if __name__ == "__main__":
         h5file["features"]  = np.array(features)
         b_files = [bytes(f, 'utf-8') for f in files]
         h5file["filenames"] = b_files
+        b_pathends = [bytes(f, 'utf-8') for f in path_ends]
+        h5file["path_ends"] = b_pathends
 
