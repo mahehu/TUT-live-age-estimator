@@ -39,28 +39,13 @@ class RecognitionThread(threading.Thread):
 
         ##### Initialize networks for Age, Gender and Expression
         ##### 1. AGE
-        print("Initializing age network...")
-        agepath = params.get("recognition", "age_folder")
+        print("Initializing multitask network...")
+        multitaskpath = params.get("recognition", "multitask_folder")
         with CustomObjectScope({'relu6': keras.layers.ReLU(6.),
                                 'DepthwiseConv2D': keras.layers.DepthwiseConv2D}):
-            self.ageNet = keras.models.load_model(os.path.join(agepath, 'model.h5'))
-        self.ageNet._make_predict_function()
+            self.multiTaskNet = keras.models.load_model(os.path.join(multitaskpath, 'model.h5'))
+        self.multiTaskNet._make_predict_function()
 
-        ##### 2. GENDER
-        print("Initializing gender network...")
-        genderpath = params.get("recognition", "gender_folder")
-        with CustomObjectScope({'relu6': keras.layers.ReLU(6), 'DepthwiseConv2D': keras.layers.DepthwiseConv2D}):
-            self.genderNet = keras.models.load_model(os.path.join(genderpath, 'model.h5'))
-        self.genderNet._make_predict_function()
-
-        ##### 3. EXPRESSION
-        print("Initializing expression network...")
-        expressionpath = params.get("recognition", "expression_folder") 
-        with CustomObjectScope({'relu6': keras.layers.ReLU(6.),
-                                'DepthwiseConv2D': keras.layers.DepthwiseConv2D}):
-            self.expressionNet = keras.models.load_model(os.path.join(expressionpath, 'model.h5'))
-        self.expressionNet._make_predict_function()
-        
         ##### Read class names
         self.expressions = {int(key): val for key, val in params['expressions'].items()}  # convert string key to int
         self.minDetections = int(params.get("recognition", "mindetections"))
@@ -258,71 +243,58 @@ class RecognitionThread(threading.Thread):
 
                     # # Recognize age
                     # Recognize only if new face or every 5 rounds
-                    if "age" not in face or face["recog_round"] % 5 == 0:
-                        age_starttime = time.time()
-                        ageout = self.ageNet.predict(recog_input)[0]
-                        age = np.dot(ageout, list(range(101)))
 
-                        #with open("age_time.txt", "a") as fp:
-                        #    fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))
-                        #print("Age time:", time.time() - age_starttime)
+                    multi_starttime = time.time()
+                    ageout, genderout, smileout = self.multiTaskNet.predict(recog_input)
+                    age = np.dot(ageout[0], list(range(101)))
 
-                        if "age" in face:
-                            face["age"] = 0.95 * face["age"] + 0.05 * age
+                    #with open("age_time.txt", "a") as fp:
+                    #    fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))
+                    #print("Age time:", time.time() - age_starttime)
+
+                    if "age" in face:
+                        face["age"] = 0.95 * face["age"] + 0.05 * age
+                    else:
+                        face["age"] = age
+                        face["recog_round"] = 0
+
+                    celeb_starttime = time.time()
+
+                    siamese_features = self.siameseNet.predict(siamese_input)
+                    K = 1  # This many nearest matches
+                    celeb_distance, I = self.celeb_index.search(siamese_features, K)
+                    celeb_idx = I[0][0]
+                    celeb_filename = self.celeb_files[celeb_idx]
+
+                    if "celebs" in face:
+                        celebs = face["celebs"]
+                        recognitions = celebs["recognitions"]
+
+                        if recognitions < RecognitionThread.CELEB_RECOG_BUFFER:
+                            celebs["indexes"].append(celeb_idx)
                         else:
-                            face["age"] = age
-                            face["recog_round"] = 0
+                            celebs["indexes"][recognitions % RecognitionThread.CELEB_RECOG_BUFFER] = celeb_idx
 
-                        celeb_starttime = time.time()
+                        celebs[celeb_idx] = Celebinfo(filename=celeb_filename, distance=celeb_distance)
+                        celebs["recognitions"] += 1
+                    else:
+                        face["celebs"] = {
+                            "indexes": [celeb_idx],
+                            celeb_idx: Celebinfo(filename=celeb_filename, distance=celeb_distance),
+                            "recognitions": 1}
 
-                        siamese_features = self.siameseNet.predict(siamese_input)
-                        K = 1  # This many nearest matches
-                        celeb_distance, I = self.celeb_index.search(siamese_features, K)
-                        celeb_idx = I[0][0]
-                        celeb_filename = self.celeb_files[celeb_idx]
+                    #print("Celeb time:", time.time() - celeb_starttime)
 
-                        if "celebs" in face:
-                            celebs = face["celebs"]
-                            recognitions = celebs["recognitions"]
+                    gender = genderout[0][0]
+                    print("Genderout", genderout)
+                    print(gender)
 
-                            if recognitions < RecognitionThread.CELEB_RECOG_BUFFER:
-                                celebs["indexes"].append(celeb_idx)
-                            else:
-                                celebs["indexes"][recognitions % RecognitionThread.CELEB_RECOG_BUFFER] = celeb_idx
+                    if "gender" in face:
+                        face["gender"] = 0.8 * face["gender"] + 0.2 * gender
+                    else:
+                        face["gender"] = gender
 
-                            celebs[celeb_idx] = Celebinfo(filename=celeb_filename, distance=celeb_distance)
-                            celebs["recognitions"] += 1
-                        else:
-                            face["celebs"] = {
-                                "indexes": [celeb_idx],
-                                celeb_idx: Celebinfo(filename=celeb_filename, distance=celeb_distance),
-                                "recognitions": 1}
-
-                        #print("Celeb time:", time.time() - celeb_starttime)
-
-                    # # Recognize gender
-                    # Recognize only if new face or every 6 rounds
-                    # This makes it unlikely to have to recognize all 3 on the same frame
-                    if "gender" not in face or face["recog_round"] % 6 == 0:
-                        gender = self.genderNet.predict(recog_input)[0][0]
-                        #print(gender)
-                        #print("Gender time: {:.2f} ms".format(1000*(time.time() - time_start)))
-
-#                        with open("gender_time.txt", "a") as fp:
-#                            fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))
-                        if "gender" in face:
-                            face["gender"] = 0.8 * face["gender"] + 0.2 * gender
-                        else:
-                            face["gender"] = gender
-
-                    # Recognize expression
-                    # Recognize always as this is expected to change (ie. not constant)
-                    out = self.expressionNet.predict(recog_input)
-
-#                    with open("exp_time.txt", "a") as fp:
-#                        fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))
-                    #print("Expression time: {:.2f} ms".format(1000*(time.time() - time_start)))
-                    t = out[0]
+                    t = smileout[0]
                     t = np.argmax(t)
                     expression = self.expressions[t]
                     face["expression"] = expression
