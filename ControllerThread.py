@@ -271,9 +271,11 @@ class ControllerThread(threading.Thread):
             txtLoc = (x + w, y + h + 60)
             self.writeText(img, annotation, txtLoc, text_size)
 
-            annotation = celeb_identity
-            txtLoc = (x + w, y + h + 90)
-            self.writeText(img, annotation, txtLoc, text_size)
+            # Celebrity name. This only works if celebrities are in their own named directories,
+            # which is not the case with the CelebA dataset provided.
+            #annotation = celeb_identity
+            #txtLoc = (x + w, y + h + 90)
+            #self.writeText(img, annotation, txtLoc, text_size)
 
         # DEBUG ONLY - Visualize aligned face crop in corner.
         if self.debug and "crop" in face.keys():

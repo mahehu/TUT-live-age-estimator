@@ -84,17 +84,18 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         model_folder = sys.argv[1]
     else:
-        model_folder = "recognizers/celebrities/network/INCEPTIONRESNET_2018-10-18-18-14-13/"
+        model_folder = "recognizers/celebrities/network/seresnet18_STRUCT_2019-04-03-02-56-41"
 
     model = load_model(model_folder + os.sep + "feature_model.h5", custom_objects = {'triplet_loss': triplet_loss, 'lifted_struct_loss': lifted_struct_loss, 'cluster_loss': cluster_loss})
 
     if len(sys.argv) > 2:
         images_folder = sys.argv[2]
     else:
-        images_folder = "recognizers/celebrities/data/FinnishCelebs"
+        images_folder = "recognizers/celebrities/data/CelebA/aligned_5points"
 
-    #files = find_images(path = images_folder)
-    files = find_images_from_tree(path = images_folder)
+    images_folder = os.path.abspath(images_folder)
+    files = find_images(path = images_folder)
+    #files = find_images_from_tree(path = images_folder)
 
     # Gather the file structure of the dataset, used when visualizing with different images than the ones features are calculated from
     commonpath = os.path.commonpath((files[0], images_folder))
@@ -111,7 +112,7 @@ if __name__ == "__main__":
         fig, ax = plt.subplots(2, 1)
 
     start_time = time.time()
-    buf_size = 1
+    buf_size = 64  # MUST BE MANUALLY DECREASED IF THERE ARE FEWER IMAGES!
     fb_shape = (buf_size, ) + model.input_shape[1:]
     frame_buffer = np.empty(fb_shape, dtype = np.float32)
     fb_idx = 0
