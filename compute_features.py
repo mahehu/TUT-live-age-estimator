@@ -7,14 +7,13 @@ Created on Mon Oct 15 15:47:04 2018
 
 from keras.models import load_model
 import h5py
-import glob
 import cv2
 import sys
 import numpy as np
 import time
 import os
 import tensorflow as tf
-from keras import backend as K 
+from keras import backend as K
 
 visualize = True
 if visualize:
@@ -91,7 +90,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 2:
         images_folder = sys.argv[2]
     else:
-        images_folder = "recognizers/celebrities/data/CelebA/aligned_5points"
+        images_folder = "recognizers/celebrities/data/CelebA/CelebA_aligned_5points"
 
     images_folder = os.path.abspath(images_folder)
     files = find_images(path = images_folder)
