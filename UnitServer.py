@@ -82,7 +82,8 @@ class UnitServer():
         if len(self.units) < self.maxUnits:
             self.units.append(unit)
         else:
-            print("Unable to add new unit.")
+            #print("Unable to add new unit.")
+            pass
             
 #        for i,unit in enumerate(self.units):
 #            print("Unit %.6f: numProcesses: %d" % (unit.getTimeStamp(), unit.getNumProcesses()))

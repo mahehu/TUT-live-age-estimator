@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     params = configparser.ConfigParser()
     params.read(paramFile)
-    
+
     # Initialize controller thread
 
     controllerThread = ControllerThread.ControllerThread(params)
