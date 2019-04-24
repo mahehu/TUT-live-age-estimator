@@ -38,7 +38,7 @@ class RecognitionThread(threading.Thread):
         self.shape_targets = np.stack((left_eye, left_mouth, nose, right_eye, right_mouth))
 
         ##### Initialize networks for Age, Gender and Expression
-        ##### 1. AGE
+        ##### 1. AGE, GENDER, SMILE MULTITASK
         print("Initializing multitask network...")
         multitaskpath = params.get("recognition", "multitask_folder")
         with CustomObjectScope({'relu6': keras.layers.ReLU(6.),
@@ -50,7 +50,7 @@ class RecognitionThread(threading.Thread):
         self.expressions = {int(key): val for key, val in params['expressions'].items()}  # convert string key to int
         self.minDetections = int(params.get("recognition", "mindetections"))
 
-        ##### 4. CELEBRITY
+        ##### 2. CELEBRITY
         self.siamesepaths = params['celebmodels']
         self.siamesepath = self.siamesepaths["0"]
         self.celeb_dataset = params.get("recognition", "celeb_dataset")
@@ -241,54 +241,17 @@ class RecognitionThread(threading.Thread):
                     recog_input = np.expand_dims(crop / 255, axis=0)
                     siamese_input = np.expand_dims(crop_celeb / 255, axis=0)
 
-                    # # Recognize age
-                    # Recognize only if new face or every 5 rounds
+                    # Recognize age, gender and smile in one forward pass
 
-                    multi_starttime = time.time()
                     ageout, genderout, smileout = self.multiTaskNet.predict(recog_input)
                     age = np.dot(ageout[0], list(range(101)))
-
-                    #with open("age_time.txt", "a") as fp:
-                    #    fp.write("%.1f,%.8f\n" % (time.time(), elapsed_time))
-                    #print("Age time:", time.time() - age_starttime)
-
                     if "age" in face:
                         face["age"] = 0.95 * face["age"] + 0.05 * age
                     else:
                         face["age"] = age
                         face["recog_round"] = 0
 
-                    celeb_starttime = time.time()
-
-                    siamese_features = self.siameseNet.predict(siamese_input)
-                    K = 1  # This many nearest matches
-                    celeb_distance, I = self.celeb_index.search(siamese_features, K)
-                    celeb_idx = I[0][0]
-                    celeb_filename = self.celeb_files[celeb_idx]
-
-                    if "celebs" in face:
-                        celebs = face["celebs"]
-                        recognitions = celebs["recognitions"]
-
-                        if recognitions < RecognitionThread.CELEB_RECOG_BUFFER:
-                            celebs["indexes"].append(celeb_idx)
-                        else:
-                            celebs["indexes"][recognitions % RecognitionThread.CELEB_RECOG_BUFFER] = celeb_idx
-
-                        celebs[celeb_idx] = Celebinfo(filename=celeb_filename, distance=celeb_distance)
-                        celebs["recognitions"] += 1
-                    else:
-                        face["celebs"] = {
-                            "indexes": [celeb_idx],
-                            celeb_idx: Celebinfo(filename=celeb_filename, distance=celeb_distance),
-                            "recognitions": 1}
-
-                    #print("Celeb time:", time.time() - celeb_starttime)
-
-                    gender = genderout[0][0]
-                    print("Genderout", genderout)
-                    print(gender)
-
+                    gender = genderout[0][1]  # male probability
                     if "gender" in face:
                         face["gender"] = 0.8 * face["gender"] + 0.2 * gender
                     else:
@@ -299,8 +262,35 @@ class RecognitionThread(threading.Thread):
                     expression = self.expressions[t]
                     face["expression"] = expression
 
+                    # Find closest celebrity match if new face or once every 5 rounds
+                    if "celebs" not in face or face["recog_round"] % 5 == 0:
+                        siamese_features = self.siameseNet.predict(siamese_input)
+                        K = 1  # This many nearest matches
+                        celeb_distance, I = self.celeb_index.search(siamese_features, K)
+                        celeb_idx = I[0][0]
+                        celeb_filename = self.celeb_files[celeb_idx]
+
+                        if "celebs" in face:
+                            celebs = face["celebs"]
+                            recognitions = celebs["recognitions"]
+
+                            # Maintain a buffer of closest matches and pick the most common one for stability
+                            if recognitions < RecognitionThread.CELEB_RECOG_BUFFER:
+                                celebs["indexes"].append(celeb_idx)
+                            else:
+                                celebs["indexes"][recognitions % RecognitionThread.CELEB_RECOG_BUFFER] = celeb_idx
+
+                            celebs[celeb_idx] = Celebinfo(filename=celeb_filename, distance=celeb_distance)
+                            celebs["recognitions"] += 1
+                        else:
+                            face["celebs"] = {
+                                "indexes": [celeb_idx],
+                                celeb_idx: Celebinfo(filename=celeb_filename, distance=celeb_distance),
+                                "recognitions": 1}
+
                     face["recog_round"] += 1
 
+    # Support for switching celebrity model on the fly
     def switch_model(self, modelidx):
 
         self.siamesepath = self.siamesepaths[modelidx]
