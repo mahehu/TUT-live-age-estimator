@@ -45,7 +45,7 @@ class ControllerThread(threading.Thread):
                                                stdout=subprocess.PIPE).communicate()[0].decode("utf-8").rstrip().split('x')
             self.resolution = [int(s) for s in self.resolution]
         else:
-            self.resolution = [1024, 768]
+            self.resolution = None
 
         # Start frame storage
         queueLength = params.getint("server", "num_frames")
@@ -64,9 +64,9 @@ class ControllerThread(threading.Thread):
         self.recognitionThread = RecognitionThread(self, params)
         self.recognitionThread.start()
 
-        unused_width = self.resolution[0] - self.displaysize[0]
-
-        cv2.moveWindow(self.caption, unused_width//2, 0)  # Will move window to center when everything is running.
+        if self.resolution:
+            unused_width = self.resolution[0] - self.displaysize[0]
+            cv2.moveWindow(self.caption, unused_width//2, 0)  # Will move window to center after everything is running.
 
         self.commandInterface()
 
@@ -271,9 +271,11 @@ class ControllerThread(threading.Thread):
             txtLoc = (x + w, y + h + 60)
             self.writeText(img, annotation, txtLoc, text_size)
 
-            annotation = celeb_identity
-            txtLoc = (x + w, y + h + 90)
-            self.writeText(img, annotation, txtLoc, text_size)
+            # Celebrity name. This only works if celebrities are in their own named directories,
+            # which is not the case with the CelebA dataset provided.
+            #annotation = celeb_identity
+            #txtLoc = (x + w, y + h + 90)
+            #self.writeText(img, annotation, txtLoc, text_size)
 
         # DEBUG ONLY - Visualize aligned face crop in corner.
         if self.debug and "crop" in face.keys():
