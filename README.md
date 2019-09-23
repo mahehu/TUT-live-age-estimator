@@ -28,7 +28,7 @@ Dependencies: [OpenCV 4.0.1+](http://www.opencv.org/), [Tensorflow 1.8+](http://
   * Install Keras 2.2.3 (or newer). Earlier versions have a slightly different way of loading the models. For example: `pip3 install keras`.
   * Install dlib (version 19.4 or newer) with python 3 dependencies; _e.g.,_ `pip3 install dlib`.
   * Install faiss with Anaconda `conda install faiss-cpu -c pytorch`.
-  * Download the required deep learning models and celebrity dataset from [here](https://tuni-my.sharepoint.com/:u:/g/personal/janne_tommola_tuni_fi/ETQU_vbKTzlHmpUy7XEirCIBUxojTXRyUWEKqA-LJjgBuA?e=Dso0tR). Extract directly to the main folder so that 2 new folders are created there.
+  * Download the required deep learning models and celebrity dataset from [here](http://doi.org/10.5281/zenodo.3457689). Extract directly to the main folder so that 2 new folders are created there.
   * Run with `python3 EstimateAge.py`.
 
 
