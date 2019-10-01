@@ -19,7 +19,7 @@ If you use our work for research purposes, consider citing the above work.
 ## Usage instructions:
 
 
-Dependencies: [OpenCV 4.0.1+](http://www.opencv.org/), [Tensorflow 1.8+](http://tensorflow.org), [Keras 2.2.3+](http://keras.io/), [dlib 19.4+](http://dlib.net/), and [faiss](https://github.com/facebookresearch/faiss/)..
+Dependencies: [OpenCV 4.0.1+](http://www.opencv.org/), [Tensorflow 1.8+](http://tensorflow.org), [Keras 2.2.3+](http://keras.io/), and [faiss](https://github.com/facebookresearch/faiss/).
 
   * Requires a webcam.
   * Tested on Ubuntu Linux 16.04, 18.04 and Windows 10 with and without a GPU.
@@ -28,9 +28,9 @@ Dependencies: [OpenCV 4.0.1+](http://www.opencv.org/), [Tensorflow 1.8+](http://
   * Install Keras 2.2.3 (or newer). Earlier versions have a slightly different way of loading the models. For example: `pip3 install keras`.
   * Install dlib (version 19.4 or newer) with python 3 dependencies; _e.g.,_ `pip3 install dlib`.
   * Install faiss with Anaconda `conda install faiss-cpu -c pytorch`.
-  * Download the required deep learning models and celebrity dataset from [here](http://doi.org/10.5281/zenodo.3457689). Extract directly to the main folder so that 2 new folders are created there.
   * Run with `python3 EstimateAge.py`.
 
+[Required deep learning models and celebrity dataset](http://doi.org/10.5281/zenodo.3466980). Extract directly to the main folder so that 2 new folders are created there.
 
 Example video [here](https://youtu.be/Kfe5hKNwrCU).
 
