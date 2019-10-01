@@ -32,6 +32,6 @@ Dependencies: [OpenCV 4.0.1+](http://www.opencv.org/), [Tensorflow 1.8+](http://
 
 [Required deep learning models and celebrity dataset](http://doi.org/10.5281/zenodo.3466980). Extract directly to the main folder so that 2 new folders are created there.
 
-Example video [here](https://youtu.be/Kfe5hKNwrCU).
+[Example video](https://youtu.be/Kfe5hKNwrCU).
 
 Contributors: [Heikki Huttunen](http://www.cs.tut.fi/~hehu/), Janne Tommola
