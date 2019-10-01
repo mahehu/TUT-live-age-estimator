@@ -6,7 +6,6 @@ import numpy as np
 import os
 from collections import namedtuple
 import cv2
-import dlib
 import keras
 from keras.utils.generic_utils import CustomObjectScope
 from compute_features import lifted_struct_loss, triplet_loss
@@ -26,7 +25,9 @@ class RecognitionThread(threading.Thread):
         ##### Initialize aligners for face alignment.
         aligner_path = params.get("recognition", "aligner")
         aligner_targets_path = params.get("recognition", "aligner_targets")
-        self.aligner = dlib.shape_predictor(aligner_path)
+        self.aligner = keras.models.load_model(aligner_path)
+        self.aligner._make_predict_function()
+        self.aligner_input_shape = (self.aligner.input_shape[2], self.aligner.input_shape[1])
 
         # load targets
         aligner_targets = np.loadtxt(aligner_targets_path)
@@ -35,7 +36,10 @@ class RecognitionThread(threading.Thread):
         nose = aligner_targets[30]
         left_mouth = aligner_targets[48]
         right_mouth = aligner_targets[54]
-        self.shape_targets = np.stack((left_eye, left_mouth, nose, right_eye, right_mouth))
+        # Dlib order
+        #self.shape_targets = np.stack((left_eye, left_mouth, nose, right_eye, right_mouth))
+        # CNN order
+        self.shape_targets = np.stack((left_eye, right_eye, nose, left_mouth, right_mouth))
 
         ##### Initialize networks for Age, Gender and Expression
         ##### 1. AGE, GENDER, SMILE MULTITASK
@@ -87,13 +91,12 @@ class RecognitionThread(threading.Thread):
         self.celeb_index.add(celeb_features)
 
     def crop_face(self, img, rect, margin=0.2):
-        x1 = rect.left()
-        x2 = rect.right()
-        y1 = rect.top()
-        y2 = rect.bottom()
-        # size of face
-        w = x2 - x1 + 1
-        h = y2 - y1 + 1
+        
+        x,y,w,h = rect
+        x1 = x
+        x2 = x + w
+        y1 = y
+        y2 = y + h
 
         # Extend the area into square shape:
         if w > h:
@@ -153,7 +156,7 @@ class RecognitionThread(threading.Thread):
 
         return new_img
 
-    def five_points_aligner(self, rect, shape_targets, landmarks_pred, img):
+    def five_points_aligner(self, shape_targets, landmarks_pred, img, rect):
 
         B = shape_targets
         A = np.hstack((np.array(landmarks_pred), np.ones((len(landmarks_pred), 1))))
@@ -188,6 +191,17 @@ class RecognitionThread(threading.Thread):
 
         return warped
 
+    def aligner_preprocess(self, img):
+        # RGB -> BGR
+
+        x = img[..., ::-1].astype(np.float32)
+
+        x[..., 0] -= 103.939
+        x[..., 1] -= 116.779
+        x[..., 2] -= 123.68
+
+        return x
+
     def run(self):
         Celebinfo = namedtuple('Celeb', ['filename', 'distance'])
 
@@ -219,18 +233,35 @@ class RecognitionThread(threading.Thread):
                     # Align the face to match the targets
 
                     # 1. DETECT LANDMARKS
-                    dlib_box = dlib.rectangle(left=x, top=y, right=x+w, bottom=y+h)
-                    dlib_img = img[..., ::-1].astype(np.uint8)  # BGR to RGB
-                    s = self.aligner(dlib_img, dlib_box)
-                    landmarks = [[s.part(k).x, s.part(k).y] for k in range(s.num_parts)]
+                    crop = img[y : y+h, x : x+w, ::-1].astype(np.uint8)  # Crop face and convert BGR to RGB (which preprocess will convert back to BGR --- TODO: clean up)
+                    
+                    if crop.size == 0:
+                        continue
+                    
+                    landmarks_crop = cv2.resize(crop, self.aligner_input_shape)
+                    landmarks_crop = self.aligner_preprocess(landmarks_crop)
+                    net_input = landmarks_crop[np.newaxis, ...].astype(np.float32)
+
+                    s = self.aligner.predict(net_input)[0]
+                    landmarks = s.reshape((5, 2))
+                    
+                    # Normalize landmarks to the full image coordinates:
+                    landmarks[:, 0] = x + landmarks[:, 0] * w / self.aligner_input_shape[0]
+                    landmarks[:, 1] = y + landmarks[:, 1] * h / self.aligner_input_shape[1]
+
+                    if "landmarks" in face:
+                        face["landmarks"].append(landmarks)
+                    else:
+                        face["landmarks"] = [landmarks]
+
+                    landmarks = np.array(face["landmarks"][-10:]).mean(axis = 0)
 
                     # 2. ALIGN
-                    landmarks = np.array(landmarks)
-                    crop = self.five_points_aligner(dlib_box, self.shape_targets, landmarks,
-                                                    dlib_img)
-
+                    crop = self.five_points_aligner(self.shape_targets, landmarks, img, rect = [x,y,w,h])                    
+                    cv2.imwrite("rec/%d.jpg" % np.random.randint(0, 1000), crop)
+                    
                     # Save aligned face crop, used for debugging if turned on.
-                    face["crop"] = crop
+                    face["crop"] = crop[..., ::-1]
 
                     crop = crop.astype(np.float32)
 
